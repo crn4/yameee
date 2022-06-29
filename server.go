@@ -6,18 +6,10 @@ import (
 	"net"
 )
 
-type client chan<- string
-
-type userData struct {
-	name       string
-	client     chan string
-	connection net.Conn
-}
-
 var (
-	entering = make(chan userData)
-	leaving  = make(chan userData)
-	messages = make(chan string)
+	entering = make(chan UserData)
+	leaving  = make(chan UserData)
+	messages = make(chan Message)
 )
 
 func main() {
@@ -37,32 +29,39 @@ func main() {
 }
 
 func broadcaster() {
-	clients := make(map[client]userData)
+	activeConnections := make(map[string]*Peers)
 	for {
 		select {
 		case msg := <-messages:
-			for cli := range clients {
-				cli <- msg
+			activeConnections[msg.chatID].RWMutex.RLock()
+			for _, peer := range activeConnections[msg.chatID].peers {
+				peer.clientChan <- msg.message
 			}
+			activeConnections[msg.chatID].RWMutex.RUnlock()
 		case cli := <-entering:
-			clients[cli.client] = cli
-			cli.client <- getClientsList(clients)
+			peerCurr := &Peer{connection: &cli.connection, clientChan: cli.client, name: cli.name, peerID: cli.userID}
+			if value, found := activeConnections[cli.chatID]; !found {
+				activeConnections[cli.chatID] = &Peers{peers: map[int32]*Peer{cli.userID: peerCurr}}
+			} else {
+				value.RWMutex.Lock()
+				value.peers[cli.userID] = peerCurr
+				value.RWMutex.Unlock()
+			}
+			cli.client <- getNamesByConnection(activeConnections[cli.chatID])
 		case cli := <-leaving:
-			delete(clients, cli.client)
-			close(cli.client)
+			if value, found := activeConnections[cli.chatID]; found {
+				value.RWMutex.Lock()
+				delete(value.peers, cli.userID)
+				close(cli.client)
+				value.RWMutex.Unlock()
+			}
 		}
 	}
 }
 
-func clientWriter(conn net.Conn, ch <-chan string) {
-	for msg := range ch {
-		fmt.Fprintln(conn, msg)
-	}
-}
-
-func getClientsList(clients map[client]userData) string {
+func getNamesByConnection(ac *Peers) string {
 	result := ""
-	for _, cli := range clients {
+	for _, cli := range ac.peers {
 		result += fmt.Sprintf("%s, ", cli.name)
 	}
 	return result[:len(result)-2] + " online"

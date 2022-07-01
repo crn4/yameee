@@ -1,29 +1,26 @@
-package main
+package engine
 
 import (
 	"fmt"
 	"math/rand"
-	"net"
 	"sync"
-)
 
-// type client chan<- string
+	"github.com/gorilla/websocket"
+)
 
 type UserData struct {
 	userID     int32
 	name       string
 	client     chan string
-	connection net.Conn
+	connection *websocket.Conn
 	chatID     string
-	// peer       *Peer // current chat person
 }
 
 type Peer struct {
 	peerID     int32
-	connection *net.Conn
+	connection *websocket.Conn
 	clientChan chan string
 	name       string
-	// connected  bool
 }
 
 type Peers struct {
@@ -36,11 +33,13 @@ type Message struct {
 	message string
 }
 
-func NewClient(conn net.Conn) *UserData {
+func NewClient(conn *websocket.Conn, name, chatID string) *UserData {
 	return &UserData{
 		userID:     rand.Int31(),
 		client:     make(chan string),
-		connection: conn}
+		connection: conn,
+		name:       name,
+		chatID:     chatID}
 }
 
 func (ud *UserData) SetName(s string) error {

@@ -2,18 +2,21 @@ package engine
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
 type UserData struct {
-	userID     int32
-	name       string
-	client     chan string
-	connection *websocket.Conn
-	chatID     string
+	userID      int32
+	name        string
+	client      chan string
+	connection  *websocket.Conn
+	chatID      string
+	broadcaster *broadcast
 }
 
 type Peer struct {
@@ -33,13 +36,14 @@ type Message struct {
 	message string
 }
 
-func NewClient(conn *websocket.Conn, name, chatID string) *UserData {
+func NewClient(conn *websocket.Conn, br *broadcast, name, chatID string) *UserData {
 	return &UserData{
-		userID:     rand.Int31(),
-		client:     make(chan string),
-		connection: conn,
-		name:       name,
-		chatID:     chatID}
+		userID:      rand.Int31(),
+		client:      make(chan string),
+		connection:  conn,
+		name:        name,
+		chatID:      chatID,
+		broadcaster: br}
 }
 
 func (ud *UserData) SetName(s string) error {
@@ -61,4 +65,54 @@ func (ud *UserData) SetChatID(s string) error {
 
 func (ud *UserData) GetCurrentChatID() string {
 	return ud.chatID
+}
+
+func (cli *UserData) clientReader() {
+	conn := cli.connection
+	br := cli.broadcaster
+	cli.client <- "Welcome, " + cli.name
+	br.entering <- *cli
+	br.messages <- *cli.composeMessage(cli.name + " joined the room")
+
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("error: %v", err)
+			}
+			break
+		}
+		br.messages <- *cli.composeMessage(cli.name + ">> " + string(message))
+	}
+
+	br.leaving <- *cli
+	br.messages <- *cli.composeMessage(cli.name + " has left")
+	conn.Close()
+}
+
+func (cli *UserData) clientWriter() {
+	conn := cli.connection
+	ch := cli.client
+	for msg := range ch {
+		conn.SetWriteDeadline(time.Now().Add(writeWait))
+
+		w, err := conn.NextWriter(websocket.TextMessage)
+		if err != nil {
+			return
+		}
+		w.Write([]byte(msg))
+
+		for i := 0; i < len(ch); i++ {
+			w.Write([]byte{'\n'})
+			w.Write([]byte(<-ch))
+		}
+
+		if err := w.Close(); err != nil {
+			return
+		}
+	}
+}
+
+func (cli *UserData) composeMessage(message string) *Message {
+	return &Message{cli.chatID, message}
 }

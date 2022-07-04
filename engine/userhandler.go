@@ -11,6 +11,7 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	CheckOrigin:     func(r *http.Request) bool { return true }, // need to develop a check that connection is from applicable client
 }
 
 const (
@@ -39,54 +40,7 @@ func UserRegistrator(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	go handleConn(conn, br, name[0], chatID[0])
-}
-
-func handleConn(conn *websocket.Conn, br *broadcast, name, chatID string) {
-	cli := NewClient(conn, name, chatID)
-	go clientWriter(conn, cli.client)
-
-	cli.client <- "Welcome, " + cli.name
-	br.entering <- *cli
-	br.messages <- *composeMessage(cli.chatID, cli.name+" has arrived")
-
-	for {
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
-			}
-			break
-		}
-		br.messages <- *composeMessage(cli.chatID, cli.name+">> "+string(message))
-	}
-
-	br.leaving <- *cli
-	br.messages <- *composeMessage(cli.chatID, cli.name+" has left")
-	conn.Close()
-}
-
-func clientWriter(conn *websocket.Conn, ch <-chan string) {
-	for msg := range ch {
-		conn.SetWriteDeadline(time.Now().Add(writeWait))
-
-		w, err := conn.NextWriter(websocket.TextMessage)
-		if err != nil {
-			return
-		}
-		w.Write([]byte(msg))
-
-		for i := 0; i < len(ch); i++ {
-			w.Write([]byte{'\n'})
-			w.Write([]byte(<-ch))
-		}
-
-		if err := w.Close(); err != nil {
-			return
-		}
-	}
-}
-
-func composeMessage(chatid string, message string) *Message {
-	return &Message{chatid, message}
+	cli := NewClient(conn, br, name[0], chatID[0])
+	go cli.clientReader()
+	go cli.clientWriter()
 }

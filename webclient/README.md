@@ -1,0 +1,3 @@
+Application for yameee messenger based on some js and crypto logic on Go. 
+
+Description will be added soon...

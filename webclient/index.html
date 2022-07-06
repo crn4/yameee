@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>yameee client v.0.1</title>
+<script src="wasm_exec.js"></script>
+<script type="text/javascript">
+window.onload = function () {
+    var conn;
+    var chat = document.getElementById("chatHistory");
+    var msg = document.getElementById("message");
+
+    const name = prompt("Enter Your Name: ", "Name");
+    const chatID = prompt("Enter room ID: ", "agbzt62f!");
+    
+    if (WebAssembly) {
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
+            go.run(result.instance);
+        });
+    } else {
+        console.chat("WebAssembly is not supported in your browser")
+    }
+
+    function appendChatWindow(item) {
+        var doScroll = chat.scrollTop > chat.scrollHeight - chat.clientHeight - 1;
+        chat.appendChild(item);
+        if (doScroll) {
+            chat.scrollTop = chat.scrollHeight - chat.clientHeight;
+        }
+    }
+
+    document.getElementById("form").onsubmit = function () {
+        if (!conn) {
+            return false;
+        }
+        if (!msg.value) {
+            return false;
+        }
+        msg.value = testfunc(msg.value)
+        conn.send(msg.value);
+        msg.value = "";
+        return false;
+    };
+
+    if (window["WebSocket"]) {
+        conn = new WebSocket("ws://127.0.0.1:8080/ws?name=" + name + "&chatID=" + chatID);
+        conn.onmessage = function (evt) {
+            var messages = evt.data.split('\n');
+            for (var i = 0; i < messages.length; i++) {
+                var item = document.createElement("div");
+                item.innerText = messages[i];
+                appendChatWindow(item);
+            }
+        };
+        conn.onclose = function (evt) {
+            var item = document.createElement("div");
+            item.innerHTML = "<b>Connection was closed</b>";
+            appendChatWindow(item);
+        };
+    } else {
+        var item = document.createElement("div");
+        item.innerHTML = "<b>Seems that your browser does not support WebSockets</b>";
+        appendChatWindow(item);
+    }
+};
+</script>
+<style type="text/css">
+html {
+    overflow: hidden;
+}
+
+body {
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    background: rgb(252, 245, 154);
+}
+
+#chatHistory {
+    background: white;
+    margin: 0;
+    padding: 0.5em 0.5em 0.5em 0.5em;
+    position: absolute;
+    top: 0.5em;
+    left: 0.5em;
+    right: 0.5em;
+    bottom: 3em;
+    overflow: auto;
+}
+
+#form {
+    padding: 0 0.5em 0 0.5em;
+    margin: 0;
+    position: absolute;
+    bottom: 1em;
+    left: 0px;
+    width: 100%;
+    overflow: hidden;
+}
+
+</style>
+</head>
+<body>
+<div id="chatHistory"></div>
+<form id="form">
+    <input type="text" id="message" size="50" autofocus />
+    <input type="submit" value="Send" />
+</form>
+</body>
+</html>

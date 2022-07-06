@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -13,7 +14,7 @@ import (
 type UserData struct {
 	userID      int32
 	name        string
-	client      chan string
+	client      chan Message
 	connection  *websocket.Conn
 	chatID      string
 	broadcaster *broadcast
@@ -22,7 +23,7 @@ type UserData struct {
 type Peer struct {
 	peerID     int32
 	connection *websocket.Conn
-	clientChan chan string
+	clientChan chan Message
 	name       string
 }
 
@@ -32,14 +33,16 @@ type Peers struct {
 }
 
 type Message struct {
-	chatID  string
-	message string
+	MsgType string
+	Name    string
+	ChatID  string
+	Message string
 }
 
 func NewClient(conn *websocket.Conn, br *broadcast, name, chatID string) *UserData {
 	return &UserData{
 		userID:      rand.Int31(),
-		client:      make(chan string),
+		client:      make(chan Message),
 		connection:  conn,
 		name:        name,
 		chatID:      chatID,
@@ -70,9 +73,10 @@ func (ud *UserData) GetCurrentChatID() string {
 func (cli *UserData) clientReader() {
 	conn := cli.connection
 	br := cli.broadcaster
-	cli.client <- "Welcome, " + cli.name
+	// cli.client <- "Welcome, " + cli.name
+	cli.client <- *cli.composeMessage("SRV", "Welcome, "+cli.name)
 	br.entering <- *cli
-	br.messages <- *cli.composeMessage(cli.name + " joined the room")
+	br.messages <- *cli.composeMessage("SRV", cli.name+" joined the room")
 
 	for {
 		_, message, err := conn.ReadMessage()
@@ -82,11 +86,15 @@ func (cli *UserData) clientReader() {
 			}
 			break
 		}
-		br.messages <- *cli.composeMessage(cli.name + ">> " + string(message))
+		var msg Message
+		if err := json.Unmarshal(message, &msg); err != nil {
+			log.Printf("%s - %s\n", err, "message JSON was not unmarshalled")
+		}
+		br.messages <- msg
 	}
 
 	br.leaving <- *cli
-	br.messages <- *cli.composeMessage(cli.name + " has left")
+	br.messages <- *cli.composeMessage("SRV", cli.name+" has left")
 	conn.Close()
 }
 
@@ -100,11 +108,16 @@ func (cli *UserData) clientWriter() {
 		if err != nil {
 			return
 		}
-		w.Write([]byte(msg))
+		jsonMsg, err := json.Marshal(msg)
+		if err != nil {
+			log.Printf("%s - %s\n", err, "Message struct was not marshalled")
+		}
+		w.Write(jsonMsg)
 
 		for i := 0; i < len(ch); i++ {
 			w.Write([]byte{'\n'})
-			w.Write([]byte(<-ch))
+			jsonMsg, _ := json.Marshal(<-ch)
+			w.Write(jsonMsg)
 		}
 
 		if err := w.Close(); err != nil {
@@ -113,6 +126,6 @@ func (cli *UserData) clientWriter() {
 	}
 }
 
-func (cli *UserData) composeMessage(message string) *Message {
-	return &Message{cli.chatID, message}
+func (cli *UserData) composeMessage(msgType string, message string) *Message {
+	return &Message{msgType, cli.name, cli.chatID, message}
 }

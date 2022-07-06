@@ -1,7 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>yameee client v.0.1</title>
+<link href="static/base.css" rel="stylesheet" type="text/css">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/js/bootstrap.bundle.min.js" integrity="sha384-pprn3073KE6tl6bjs2QrFaJGz5/SUsLqktiwsUTF55Jfv3qYSDhgCecCxMW52nD2" crossorigin="anonymous"></script>
 <script src="wasm_exec.js"></script>
 <script type="text/javascript">
 window.onload = function () {
@@ -37,8 +41,10 @@ window.onload = function () {
             return false;
         }
         msg.value = testfunc(msg.value)
-        conn.send(msg.value);
+        let msgJson = JSON.stringify({MsgType: "MSG", Name: name, ChatID: chatID, Message: msg.value});
+        conn.send(msgJson);
         msg.value = "";
+        msgJson = "";
         return false;
     };
 
@@ -48,7 +54,12 @@ window.onload = function () {
             var messages = evt.data.split('\n');
             for (var i = 0; i < messages.length; i++) {
                 var item = document.createElement("div");
-                item.innerText = messages[i];
+                let receiveddJson = JSON.parse(messages[i]);
+                if (receiveddJson.MsgType == "MSG") {
+                    item.innerHTML = '<b>' + receiveddJson.Name + '</b>' + " >> " + receiveddJson.Message;
+                } else {
+                    item.innerHTML = receiveddJson.Message;
+                } 
                 appendChatWindow(item);
             }
         };
@@ -64,49 +75,12 @@ window.onload = function () {
     }
 };
 </script>
-<style type="text/css">
-html {
-    overflow: hidden;
-}
-
-body {
-    overflow: hidden;
-    padding: 0;
-    margin: 0;
-    width: 100%;
-    height: 100%;
-    background: rgb(252, 245, 154);
-}
-
-#chatHistory {
-    background: white;
-    margin: 0;
-    padding: 0.5em 0.5em 0.5em 0.5em;
-    position: absolute;
-    top: 0.5em;
-    left: 0.5em;
-    right: 0.5em;
-    bottom: 3em;
-    overflow: auto;
-}
-
-#form {
-    padding: 0 0.5em 0 0.5em;
-    margin: 0;
-    position: absolute;
-    bottom: 1em;
-    left: 0px;
-    width: 100%;
-    overflow: hidden;
-}
-
-</style>
 </head>
 <body>
 <div id="chatHistory"></div>
 <form id="form">
     <input type="text" id="message" size="50" autofocus />
-    <input type="submit" value="Send" />
+    <input type="submit" id="sendButton" value="Send" />
 </form>
 </body>
 </html>

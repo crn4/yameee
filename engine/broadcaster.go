@@ -47,11 +47,11 @@ func startBroadcast(br *broadcast) {
 	for {
 		select {
 		case msg := <-br.messages:
-			activeConnections[msg.chatID].RWMutex.RLock()
-			for _, peer := range activeConnections[msg.chatID].peers {
-				peer.clientChan <- msg.message
+			activeConnections[msg.ChatID].RWMutex.RLock()
+			for _, peer := range activeConnections[msg.ChatID].peers {
+				peer.clientChan <- msg
 			}
-			activeConnections[msg.chatID].RWMutex.RUnlock()
+			activeConnections[msg.ChatID].RWMutex.RUnlock()
 		case cli := <-br.entering:
 			peerCurr := &Peer{connection: cli.connection, clientChan: cli.client, name: cli.name, peerID: cli.userID}
 			if value, found := activeConnections[cli.chatID]; !found {
@@ -61,7 +61,7 @@ func startBroadcast(br *broadcast) {
 				value.peers[cli.userID] = peerCurr
 				value.RWMutex.Unlock()
 			}
-			cli.client <- getNamesByConnection(activeConnections[cli.chatID])
+			cli.client <- *cli.composeMessage("SRV", getNamesByConnection(activeConnections[cli.chatID]))
 		case cli := <-br.leaving:
 			if value, found := activeConnections[cli.chatID]; found {
 				value.RWMutex.Lock()

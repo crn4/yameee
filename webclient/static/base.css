@@ -19,7 +19,7 @@ body {
     top: 0.5em;
     left: 0.5em;
     right: 0.5em;
-    bottom: 3em;
+    bottom: 4em;
     overflow: auto;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     font-size: smaller;
@@ -29,7 +29,7 @@ body {
     padding: 0 0.5em 0 0.5em;
     margin: 0;
     position: absolute;
-    bottom: 2em;
+    bottom: 1em;
     left: 0px;
     width: 100%;
     overflow: hidden;

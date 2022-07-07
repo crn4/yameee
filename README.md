@@ -1,3 +1,5 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/crn4/yameee)](https://goreportcard.com/report/github.com/crn4/yameee) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/crn4/yameee/blob/main/LICENSE)
+
 # yameee
 Yet another messenger, but with some differences: 
  - no any data is stored on server

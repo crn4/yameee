@@ -3,9 +3,10 @@ package engine
 import "fmt"
 
 type broadcast struct {
-	entering chan UserData
-	leaving  chan UserData
-	messages chan Message
+	entering  chan *UserData
+	leaving   chan *UserData
+	handshake chan *UserData
+	messages  chan Message
 }
 
 var (
@@ -30,38 +31,42 @@ func broadcastController(broadcastAnswer chan<- *broadcast, broadcastRequest <-c
 			newbroadcast := newBroadcast()
 			activeBroadcasts[request] = newbroadcast
 			broadcastAnswer <- newbroadcast
-			go startBroadcast(newbroadcast)
+			go newbroadcast.startBroadcast()
 		}
 	}
 }
 
 func newBroadcast() *broadcast {
-	entering := make(chan UserData)
-	leaving := make(chan UserData)
+	entering := make(chan *UserData)
+	leaving := make(chan *UserData)
+	handshake := make(chan *UserData)
 	messages := make(chan Message)
-	return &broadcast{entering, leaving, messages}
+	return &broadcast{entering, leaving, handshake, messages}
 }
 
-func startBroadcast(br *broadcast) {
+func (br *broadcast) startBroadcast() {
 	activeConnections := make(map[string]*Peers)
 	for {
 		select {
 		case msg := <-br.messages:
 			activeConnections[msg.ChatID].RWMutex.RLock()
 			for _, peer := range activeConnections[msg.ChatID].peers {
-				peer.clientChan <- msg
+				peer.client <- msg
 			}
 			activeConnections[msg.ChatID].RWMutex.RUnlock()
 		case cli := <-br.entering:
-			peerCurr := &Peer{connection: cli.connection, clientChan: cli.client, name: cli.name, peerID: cli.userID}
 			if value, found := activeConnections[cli.chatID]; !found {
-				activeConnections[cli.chatID] = &Peers{peers: map[int32]*Peer{cli.userID: peerCurr}}
+				activeConnections[cli.chatID] = &Peers{peers: map[int32]*UserData{cli.userID: cli}}
 			} else {
 				value.RWMutex.Lock()
-				value.peers[cli.userID] = peerCurr
+				value.peers[cli.userID] = cli
 				value.RWMutex.Unlock()
 			}
 			cli.client <- *cli.composeMessage("SRV", getNamesByConnection(activeConnections[cli.chatID]))
+		case cli := <-br.handshake:
+			if value := activeConnections[cli.chatID]; len(value.peers) == 2 {
+				exchangeKeysBetweenPeers(value.peers)
+			}
 		case cli := <-br.leaving:
 			if value, found := activeConnections[cli.chatID]; found {
 				value.RWMutex.Lock()
@@ -79,4 +84,15 @@ func getNamesByConnection(ac *Peers) string {
 		result += fmt.Sprintf("%s, ", cli.name)
 	}
 	return result[:len(result)-2] + " online"
+}
+
+func exchangeKeysBetweenPeers(peers map[int32]*UserData) {
+	peersSlice := make([]*UserData, 0, 2)
+	if len(peers) == 2 {
+		for _, peer := range peers {
+			peersSlice = append(peersSlice, peer)
+		}
+		peersSlice[0].client <- *peersSlice[1].composeMessage("KEY", peersSlice[1].publicKey)
+		peersSlice[1].client <- *peersSlice[0].composeMessage("KEY", peersSlice[0].publicKey)
+	}
 }

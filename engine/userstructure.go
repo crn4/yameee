@@ -2,7 +2,6 @@ package engine
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"math/rand"
 	"sync"
@@ -18,18 +17,12 @@ type UserData struct {
 	connection  *websocket.Conn
 	chatID      string
 	broadcaster *broadcast
-}
-
-type Peer struct {
-	peerID     int32
-	connection *websocket.Conn
-	clientChan chan Message
-	name       string
+	publicKey   string
 }
 
 type Peers struct {
 	sync.RWMutex
-	peers map[int32]*Peer
+	peers map[int32]*UserData
 }
 
 type Message struct {
@@ -49,25 +42,8 @@ func NewClient(conn *websocket.Conn, br *broadcast, name, chatID string) *UserDa
 		broadcaster: br}
 }
 
-func (ud *UserData) SetName(s string) error {
-	if 0 < len([]byte(s)) && len([]byte(s)) < 20 {
-		ud.name = s
-		return nil
-	}
-	return fmt.Errorf("%s was not proper to be set as acc name", s)
-}
-
-// this func should be redesigned for secure chat id
-func (ud *UserData) SetChatID(s string) error {
-	if 0 < len([]byte(s)) && len([]byte(s)) < 64 {
-		ud.chatID = s
-		return nil
-	}
-	return fmt.Errorf("%s was not proper to be set as Chat ID", s)
-}
-
-func (ud *UserData) GetCurrentChatID() string {
-	return ud.chatID
+func (cli *UserData) SetPublicKey(key string) {
+	cli.publicKey = key
 }
 
 func (cli *UserData) clientReader() {
@@ -75,7 +51,7 @@ func (cli *UserData) clientReader() {
 	br := cli.broadcaster
 	// cli.client <- "Welcome, " + cli.name
 	cli.client <- *cli.composeMessage("SRV", "Welcome, "+cli.name)
-	br.entering <- *cli
+	br.entering <- cli
 	br.messages <- *cli.composeMessage("SRV", cli.name+" joined the room")
 
 	for {
@@ -90,10 +66,17 @@ func (cli *UserData) clientReader() {
 		if err := json.Unmarshal(message, &msg); err != nil {
 			log.Printf("%s - %s\n", err, "message JSON was not unmarshalled")
 		}
-		br.messages <- msg
+		switch msg.MsgType {
+		case "MSG":
+			br.messages <- msg
+		case "KEY":
+			cli.SetPublicKey(msg.Message)
+			br.handshake <- cli
+		}
+
 	}
 
-	br.leaving <- *cli
+	br.leaving <- cli
 	br.messages <- *cli.composeMessage("SRV", cli.name+" has left")
 	conn.Close()
 }

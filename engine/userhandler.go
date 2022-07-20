@@ -11,7 +11,7 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin:     func(r *http.Request) bool { return true }, // need to develop a check that connection is from applicable client
+	CheckOrigin:     func(r *http.Request) bool { return true }, //  TODO need to develop a check that connection is from applicable client
 }
 
 const (

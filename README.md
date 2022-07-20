@@ -12,5 +12,5 @@ As a client - simple JS window. But all client-side calcullations are developed 
 WORK IS STILL IN PROGRESS
 Details will be added soon
 
-Disclaimer
+# Disclaimer
 Messenger is developed for fun only and testing all technologies (WS, WA etc)

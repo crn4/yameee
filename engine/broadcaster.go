@@ -1,39 +1,85 @@
 package engine
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/gorilla/websocket"
+)
+
+type server struct {
+	broadcasts map[string]*broadcast
+	rwMutex    sync.RWMutex
+}
+
+func NewServer() *server {
+	br := make(map[string]*broadcast)
+	return &server{broadcasts: br}
+}
+
+func (s *server) Start(port string) {
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		s.userRegistrator(w, r)
+	})
+	err := http.ListenAndServe(port, nil)
+	if err != nil {
+		log.Fatal("Listen and serve: ", err)
+	}
+}
+
+func (s *server) broadcastController(chatID string) *broadcast {
+	s.rwMutex.Lock()
+	broadcast, found := s.broadcasts[chatID]
+	if !found {
+		broadcast = newBroadcast()
+		s.broadcasts[chatID] = broadcast
+		go broadcast.startBroadcast()
+	}
+	s.rwMutex.Unlock()
+	return broadcast
+}
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin:     func(r *http.Request) bool { return true }, //  TODO need to develop a check that connection is from applicable client
+}
+
+const (
+	// Time allowed to write a message to the peer.
+	writeWait = 10 * time.Second
+)
+
+func (s *server) userRegistrator(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	name, ok := r.URL.Query()["name"]
+	if !ok || len(name[0]) == 0 {
+		log.Println("Name was not send")
+		return
+	}
+	chatID, ok := r.URL.Query()["chatID"]
+	if !ok || len(name[0]) == 0 {
+		log.Println("chatID was not send")
+		return
+	}
+	br := s.broadcastController(chatID[0])
+	cli := NewClient(conn, br, name[0], chatID[0])
+	go cli.clientReader()
+	go cli.clientWriter()
+}
 
 type broadcast struct {
 	entering  chan *UserData
 	leaving   chan *UserData
 	handshake chan *UserData
 	messages  chan Message
-}
-
-var (
-	broadcastRequest = make(chan string)
-	broadcastAnswer  = make(chan *broadcast)
-)
-
-func BroadcastManager() {
-	go broadcastController(broadcastAnswer, broadcastRequest)
-}
-
-func broadcastController(broadcastAnswer chan<- *broadcast, broadcastRequest <-chan string) {
-	activeBroadcasts := make(map[string]*broadcast)
-	for {
-		request, ok := <-broadcastRequest
-		if !ok {
-			close(broadcastAnswer)
-		}
-		if data, found := activeBroadcasts[request]; found {
-			broadcastAnswer <- data
-		} else {
-			newbroadcast := newBroadcast()
-			activeBroadcasts[request] = newbroadcast
-			broadcastAnswer <- newbroadcast
-			go newbroadcast.startBroadcast()
-		}
-	}
 }
 
 func newBroadcast() *broadcast {

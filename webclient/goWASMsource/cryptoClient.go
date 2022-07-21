@@ -1,8 +1,9 @@
 package main
 
 import (
-	"mytests/yetanothermessenger/server/cryprot"
 	"syscall/js"
+
+	"github.com/crn4/yameee/cryprot"
 )
 
 func main() {

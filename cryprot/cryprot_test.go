@@ -1,9 +1,10 @@
 package cryprot_test
 
 import (
-	"mytests/yetanothermessenger/server/cryprot"
 	"reflect"
 	"testing"
+
+	"github.com/crn4/yameee/cryprot"
 )
 
 func TestKeyPairs(t *testing.T) {

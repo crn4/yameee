@@ -2,8 +2,9 @@ package main
 
 import (
 	"log"
-	"mytests/yetanothermessenger/server/engine"
 	"net/http"
+
+	"github.com/crn4/yameee/engine"
 )
 
 func main() {

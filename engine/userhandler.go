@@ -10,6 +10,12 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	envelopeTypeService = "SRV"
+	envelopeTypeMessage = "MSG"
+	envelopeTypeKey     = "KEY"
+)
+
 type UserData struct {
 	userID      int32
 	name        string
@@ -49,9 +55,9 @@ func (cli *UserData) SetPublicKey(key string) {
 func (cli *UserData) clientReader() {
 	conn := cli.connection
 	br := cli.broadcaster
-	cli.client <- *cli.composeMessage("SRV", "Welcome, "+cli.name)
+	cli.client <- cli.composeMessage(envelopeTypeService, "Welcome, "+cli.name)
 	br.entering <- cli
-	br.messages <- *cli.composeMessage("SRV", cli.name+" joined the room")
+	br.messages <- cli.composeMessage(envelopeTypeService, cli.name+" joined the room")
 
 	for {
 		_, message, err := conn.ReadMessage()
@@ -66,9 +72,9 @@ func (cli *UserData) clientReader() {
 			log.Printf("%s - %s\n", err, "message JSON was not unmarshalled")
 		}
 		switch msg.MsgType {
-		case "MSG":
+		case envelopeTypeMessage:
 			br.messages <- msg
-		case "KEY":
+		case envelopeTypeKey:
 			cli.SetPublicKey(msg.Message)
 			br.handshake <- cli
 		}
@@ -76,7 +82,7 @@ func (cli *UserData) clientReader() {
 	}
 
 	br.leaving <- cli
-	br.messages <- *cli.composeMessage("SRV", cli.name+" has left")
+	br.messages <- cli.composeMessage(envelopeTypeService, cli.name+" has left")
 	conn.Close()
 }
 
@@ -90,11 +96,11 @@ func (cli *UserData) clientWriter() {
 		if err != nil {
 			return
 		}
-		jsonMsg, err := json.Marshal(msg)
-		if err != nil {
+		if jsonMsg, err := json.Marshal(msg); err != nil {
 			log.Printf("%s - %s\n", err, "Message struct was not marshalled")
+		} else {
+			w.Write(jsonMsg)
 		}
-		w.Write(jsonMsg)
 
 		for i := 0; i < len(ch); i++ {
 			w.Write([]byte{'\n'})
@@ -108,6 +114,6 @@ func (cli *UserData) clientWriter() {
 	}
 }
 
-func (cli *UserData) composeMessage(msgType string, message string) *Message {
-	return &Message{msgType, cli.name, cli.chatID, message}
+func (cli *UserData) composeMessage(msgType string, message string) Message {
+	return Message{msgType, cli.name, cli.chatID, message}
 }

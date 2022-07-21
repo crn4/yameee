@@ -20,14 +20,13 @@ func NewServer() *server {
 	return &server{broadcasts: br}
 }
 
-func (s *server) Start(port string) {
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		s.userRegistrator(w, r)
-	})
+func (s *server) Start(port string) error {
+	http.HandleFunc("/ws", s.userRegistrator)
 	err := http.ListenAndServe(port, nil)
 	if err != nil {
-		log.Fatal("Listen and serve: ", err)
+		return err
 	}
+	return nil
 }
 
 func (s *server) broadcastController(chatID string) *broadcast {
@@ -38,7 +37,7 @@ func (s *server) broadcastController(chatID string) *broadcast {
 		s.broadcasts[chatID] = broadcast
 		go broadcast.startBroadcast()
 	}
-	s.rwMutex.Unlock()
+	defer s.rwMutex.Unlock()
 	return broadcast
 }
 
@@ -59,18 +58,20 @@ func (s *server) userRegistrator(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	name, ok := r.URL.Query()["name"]
-	if !ok || len(name[0]) == 0 {
+	name := r.URL.Query().Get("name")
+	if len(name) == 0 {
 		log.Println("Name was not send")
+		conn.Close()
 		return
 	}
-	chatID, ok := r.URL.Query()["chatID"]
-	if !ok || len(name[0]) == 0 {
+	chatID := r.URL.Query().Get("chatID")
+	if len(chatID) == 0 {
 		log.Println("chatID was not send")
+		conn.Close()
 		return
 	}
-	br := s.broadcastController(chatID[0])
-	cli := NewClient(conn, br, name[0], chatID[0])
+	br := s.broadcastController(chatID)
+	cli := NewClient(conn, br, name, chatID)
 	go cli.clientReader()
 	go cli.clientWriter()
 }
@@ -108,7 +109,7 @@ func (br *broadcast) startBroadcast() {
 				value.peers[cli.userID] = cli
 				value.RWMutex.Unlock()
 			}
-			cli.client <- *cli.composeMessage("SRV", getNamesByConnection(activeConnections[cli.chatID]))
+			cli.client <- cli.composeMessage(envelopeTypeService, getNamesByConnection(activeConnections[cli.chatID]))
 		case cli := <-br.handshake:
 			if value := activeConnections[cli.chatID]; len(value.peers) == 2 {
 				exchangeKeysBetweenPeers(value.peers)
@@ -138,7 +139,7 @@ func exchangeKeysBetweenPeers(peers map[int32]*UserData) {
 		for _, peer := range peers {
 			peersSlice = append(peersSlice, peer)
 		}
-		peersSlice[0].client <- *peersSlice[1].composeMessage("KEY", peersSlice[1].publicKey)
-		peersSlice[1].client <- *peersSlice[0].composeMessage("KEY", peersSlice[0].publicKey)
+		peersSlice[0].client <- peersSlice[1].composeMessage(envelopeTypeKey, peersSlice[1].publicKey)
+		peersSlice[1].client <- peersSlice[0].composeMessage(envelopeTypeKey, peersSlice[0].publicKey)
 	}
 }

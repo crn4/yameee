@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/rand"
 	"sync"
@@ -116,4 +117,23 @@ func (cli *UserData) clientWriter() {
 
 func (cli *UserData) composeMessage(msgType string, message string) Message {
 	return Message{msgType, cli.name, cli.chatID, message}
+}
+
+func (pr *Peers) getNamesByConnection() string {
+	result := ""
+	for _, cli := range pr.peers {
+		result += fmt.Sprintf("%s, ", cli.name)
+	}
+	return result[:len(result)-2] + " online"
+}
+
+func (pr *Peers) exchangeKeysBetweenPeers() {
+	peersSlice := make([]*UserData, 0, 2)
+	if len(pr.peers) == 2 {
+		for _, peer := range pr.peers {
+			peersSlice = append(peersSlice, peer)
+		}
+		peersSlice[0].client <- peersSlice[1].composeMessage(envelopeTypeKey, peersSlice[1].publicKey)
+		peersSlice[1].client <- peersSlice[0].composeMessage(envelopeTypeKey, peersSlice[0].publicKey)
+	}
 }

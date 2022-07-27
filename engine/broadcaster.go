@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -30,14 +29,27 @@ func (s *server) Start(port string) error {
 }
 
 func (s *server) broadcastController(chatID string) *broadcast {
-	s.rwMutex.Lock()
+	s.rwMutex.RLock()
+	wlock := false
+	defer func() {
+		if wlock {
+			s.rwMutex.Unlock()
+		} else {
+			s.rwMutex.RUnlock()
+		}
+	}()
 	broadcast, found := s.broadcasts[chatID]
 	if !found {
-		broadcast = newBroadcast()
-		s.broadcasts[chatID] = broadcast
-		go broadcast.startBroadcast()
+		s.rwMutex.RUnlock()
+		s.rwMutex.Lock()
+		wlock = true
+		broadcast, found = s.broadcasts[chatID]
+		if !found {
+			broadcast = newBroadcast()
+			s.broadcasts[chatID] = broadcast
+			go broadcast.startBroadcast()
+		}
 	}
-	defer s.rwMutex.Unlock()
 	return broadcast
 }
 
@@ -91,55 +103,32 @@ func newBroadcast() *broadcast {
 	return &broadcast{entering, leaving, handshake, messages}
 }
 
+// мапа activeConnections - рудимент. когда я еще не дошел до бродкастера, она содержала в себе Peers по ключу chatID
+// теперь это не актуально, так как сам startBroadcaster запускается для каждого chatID
 func (br *broadcast) startBroadcast() {
-	activeConnections := make(map[string]*Peers)
+	peersList := &Peers{peers: make(map[int32]*UserData)}
 	for {
 		select {
 		case msg := <-br.messages:
-			activeConnections[msg.ChatID].RWMutex.RLock()
-			for _, peer := range activeConnections[msg.ChatID].peers {
+			peersList.RWMutex.RLock()
+			for _, peer := range peersList.peers {
 				peer.client <- msg
 			}
-			activeConnections[msg.ChatID].RWMutex.RUnlock()
+			peersList.RWMutex.RUnlock()
 		case cli := <-br.entering:
-			if value, found := activeConnections[cli.chatID]; !found {
-				activeConnections[cli.chatID] = &Peers{peers: map[int32]*UserData{cli.userID: cli}}
-			} else {
-				value.RWMutex.Lock()
-				value.peers[cli.userID] = cli
-				value.RWMutex.Unlock()
-			}
-			cli.client <- cli.composeMessage(envelopeTypeService, getNamesByConnection(activeConnections[cli.chatID]))
-		case cli := <-br.handshake:
-			if value := activeConnections[cli.chatID]; len(value.peers) == 2 {
-				exchangeKeysBetweenPeers(value.peers)
+			peersList.RWMutex.Lock()
+			peersList.peers[cli.userID] = cli
+			peersList.RWMutex.Unlock()
+			cli.client <- cli.composeMessage(envelopeTypeService, peersList.getNamesByConnection())
+		case <-br.handshake:
+			if len(peersList.peers) == 2 {
+				peersList.exchangeKeysBetweenPeers()
 			}
 		case cli := <-br.leaving:
-			if value, found := activeConnections[cli.chatID]; found {
-				value.RWMutex.Lock()
-				delete(value.peers, cli.userID)
-				close(cli.client)
-				value.RWMutex.Unlock()
-			}
+			peersList.RWMutex.Lock()
+			delete(peersList.peers, cli.userID)
+			close(cli.client)
+			peersList.RWMutex.Unlock()
 		}
-	}
-}
-
-func getNamesByConnection(ac *Peers) string {
-	result := ""
-	for _, cli := range ac.peers {
-		result += fmt.Sprintf("%s, ", cli.name)
-	}
-	return result[:len(result)-2] + " online"
-}
-
-func exchangeKeysBetweenPeers(peers map[int32]*UserData) {
-	peersSlice := make([]*UserData, 0, 2)
-	if len(peers) == 2 {
-		for _, peer := range peers {
-			peersSlice = append(peersSlice, peer)
-		}
-		peersSlice[0].client <- peersSlice[1].composeMessage(envelopeTypeKey, peersSlice[1].publicKey)
-		peersSlice[1].client <- peersSlice[0].composeMessage(envelopeTypeKey, peersSlice[0].publicKey)
 	}
 }

@@ -2,9 +2,8 @@ package engine
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
-	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,7 +17,6 @@ const (
 )
 
 type UserData struct {
-	userID      int32
 	name        string
 	client      chan Message
 	connection  *websocket.Conn
@@ -29,7 +27,7 @@ type UserData struct {
 
 type Peers struct {
 	sync.RWMutex
-	peers map[int32]*UserData
+	peers map[*websocket.Conn]*UserData
 }
 
 type Message struct {
@@ -41,7 +39,6 @@ type Message struct {
 
 func NewClient(conn *websocket.Conn, br *broadcast, name, chatID string) *UserData {
 	return &UserData{
-		userID:      rand.Int31(),
 		client:      make(chan Message),
 		connection:  conn,
 		name:        name,
@@ -71,6 +68,7 @@ func (cli *UserData) clientReader() {
 		var msg Message
 		if err := json.Unmarshal(message, &msg); err != nil {
 			log.Printf("%s - %s\n", err, "message JSON was not unmarshalled")
+			continue
 		}
 		switch msg.MsgType {
 		case envelopeTypeMessage:
@@ -120,11 +118,11 @@ func (cli *UserData) composeMessage(msgType string, message string) Message {
 }
 
 func (pr *Peers) getNamesByConnection() string {
-	result := ""
+	var clients []string
 	for _, cli := range pr.peers {
-		result += fmt.Sprintf("%s, ", cli.name)
+		clients = append(clients, cli.name)
 	}
-	return result[:len(result)-2] + " online"
+	return strings.Join(clients, ", ") + " online"
 }
 
 func (pr *Peers) exchangeKeysBetweenPeers() {

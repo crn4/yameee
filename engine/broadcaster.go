@@ -106,7 +106,7 @@ func newBroadcast() *broadcast {
 // мапа activeConnections - рудимент. когда я еще не дошел до бродкастера, она содержала в себе Peers по ключу chatID
 // теперь это не актуально, так как сам startBroadcaster запускается для каждого chatID
 func (br *broadcast) startBroadcast() {
-	peersList := &Peers{peers: make(map[int32]*UserData)}
+	peersList := &Peers{peers: make(map[*websocket.Conn]*UserData)}
 	for {
 		select {
 		case msg := <-br.messages:
@@ -117,16 +117,18 @@ func (br *broadcast) startBroadcast() {
 			peersList.RWMutex.RUnlock()
 		case cli := <-br.entering:
 			peersList.RWMutex.Lock()
-			peersList.peers[cli.userID] = cli
+			peersList.peers[cli.connection] = cli
 			peersList.RWMutex.Unlock()
 			cli.client <- cli.composeMessage(envelopeTypeService, peersList.getNamesByConnection())
 		case <-br.handshake:
+			peersList.RWMutex.RLock()
 			if len(peersList.peers) == 2 {
 				peersList.exchangeKeysBetweenPeers()
 			}
+			peersList.RWMutex.RUnlock()
 		case cli := <-br.leaving:
 			peersList.RWMutex.Lock()
-			delete(peersList.peers, cli.userID)
+			delete(peersList.peers, cli.connection)
 			close(cli.client)
 			peersList.RWMutex.Unlock()
 		}
